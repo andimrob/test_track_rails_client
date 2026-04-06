@@ -20,6 +20,7 @@ Gem::Specification.new do |s|
 
   s.add_dependency 'activejob', rails_constraints
   s.add_dependency 'activemodel', rails_constraints
+  s.add_dependency 'activerecord', rails_constraints
   s.add_dependency "faraday", ">= 0.8"
   s.add_dependency 'faraday_middleware'
   s.add_dependency 'mixpanel-ruby', '~> 1.4'

@@ -21,6 +21,7 @@ module TestTrack
 
   mattr_accessor :enabled_override, :app_name
   mattr_accessor(:job_base_class_name) { 'ActiveJob::Base' }
+  mattr_accessor(:split_registry_refresh_interval) { 300 }
 
   class << self
     def analytics

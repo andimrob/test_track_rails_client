@@ -19,61 +19,58 @@ RSpec.describe TestTrack::Remote::SplitRegistry do
   before do
     allow(described_class).to receive(:instance).and_call_original
     allow(described_class).to receive(:fake_instance_attributes).and_return(split_registry)
-
-    begin
-      Rails.cache.clear
-    rescue Errno::ENOENT
-      # This is fine
-    end
+    TestTrack::SplitRegistryUpdater.reset_for_testing!
+    allow(TestTrack::SplitRegistryCache).to receive(:fetch_registry).and_return(nil)
+    allow(TestTrack::SplitRegistryCache).to receive(:store_registry)
   end
+
+  after { TestTrack::SplitRegistryUpdater.reset_for_testing! }
 
   describe "#to_hash" do
     context 'with api enabled' do
-      let(:url) { "http://testtrack.dev/api/v3/builds/#{TestTrack.build_timestamp}/split_registry" }
       around do |example|
-        with_test_track_enabled do
-          stub_request(:get, url)
-            .with(basic_auth: %w(dummy fakepassword))
-            .to_return(status: 200, body: {
-              splits: {
-                time: {
-                  weights: {
-                    back_in_time: 100,
-                    power_of_love: 0
-                  },
-                  feature_gate: false
-                }
-              },
-              experience_sampling_weight: 1
-            }.to_json)
-          example.run
-        end
+        with_test_track_enabled { example.run }
       end
 
-      it "only hits the API once" do
-        2.times { expect(described_class.to_hash).to eq(split_registry) }
-        expect(described_class).to have_received(:instance).exactly(:once)
+      before do
+        allow(TestTrack::Remote::SplitRegistry).to receive(:instance)
+          .and_return(double(attributes: split_registry))
       end
 
-      it "freezes the returned hash even when retrieving from cache" do
-        2.times { expect { described_class.to_hash[:foo] = "bar" }.to raise_error(/frozen/) }
+      it "returns the registry from the updater's in-memory cache" do
+        TestTrack::SplitRegistryUpdater.refresh_now!
+        expect(described_class.to_hash).to eq(split_registry)
+      end
+
+      it "returns nil when the updater has not yet loaded a registry" do
+        expect(described_class.to_hash).to be_nil
+      end
+
+      it "returns a frozen hash" do
+        TestTrack::SplitRegistryUpdater.refresh_now!
+        expect { described_class.to_hash[:foo] = "bar" }.to raise_error(/frozen/)
       end
     end
 
-    it "returns nil if the server times out" do
-      allow(described_class).to receive(:instance) { raise(Faraday::TimeoutError, "too slow!") }
-
+    it "returns nil if no registry has been loaded" do
       expect(described_class.to_hash).to eq(nil)
+    end
+  end
 
-      expect(described_class).to have_received(:instance)
+  describe ".reset" do
+    before do
+      allow(TestTrack::Remote::SplitRegistry).to receive(:instance)
+        .and_return(double(attributes: split_registry))
     end
 
-    it "returns nil if the server 503s" do
-      allow(described_class).to receive(:instance) { raise(Her::Errors::RemoteServerError, "503 is happening") }
+    it "triggers an immediate synchronous refresh via the updater" do
+      expect(TestTrack::SplitRegistryUpdater).to receive(:refresh_now!)
+      described_class.reset
+    end
 
-      expect(described_class.to_hash).to eq(nil)
-
-      expect(described_class).to have_received(:instance)
+    it "results in an updated in-memory registry" do
+      described_class.reset
+      expect(TestTrack::SplitRegistryUpdater.registry).to eq(split_registry)
     end
   end
 
@@ -109,7 +106,7 @@ RSpec.describe TestTrack::Remote::SplitRegistry do
       )
     end
 
-    it "it fetches attributes from the test track server when enabled" do
+    it "fetches attributes from the test track server when enabled" do
       with_test_track_enabled do
         expect(subject.attributes).to eq(
           "splits" => {

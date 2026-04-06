@@ -1,8 +1,6 @@
 class TestTrack::Remote::SplitRegistry
   include TestTrack::RemoteModel
 
-  CACHE_KEY = 'test_track_split_registry'.freeze
-
   collection_path 'api/v3/builds/:build_timestamp/split_registry'
 
   class << self
@@ -19,25 +17,19 @@ class TestTrack::Remote::SplitRegistry
       end
     end
 
+    # Triggers an immediate synchronous refresh from the TestTrack API and
+    # updates both the in-process cache and the database backing store.
+    # Called by ConfigUpdater after split configuration changes.
     def reset
-      Rails.cache.delete(CACHE_KEY)
+      TestTrack::SplitRegistryUpdater.refresh_now!
     end
 
     def to_hash
       if faked?
         instance.attributes.freeze
       else
-        fetch_cache { instance.attributes }.freeze
+        TestTrack::SplitRegistryUpdater.registry
       end
-    rescue *TestTrack::SERVER_ERRORS => e
-      Rails.logger.error "TestTrack failed to load split registry. #{e}"
-      fetch_cache { nil } # cache the missing registry for 5 seconds if we can't get one
-    end
-
-    private
-
-    def fetch_cache(&block)
-      Rails.cache.fetch(CACHE_KEY, expires_in: 5.seconds, &block)
     end
   end
 end

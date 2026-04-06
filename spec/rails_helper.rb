@@ -31,6 +31,7 @@ Dir[TestTrackRailsClient::Engine.root.join("spec/support/**/*.rb")].sort.each { 
 
 RSpec.configure do |config|
   config.render_views = true
+  config.use_transactional_fixtures = true
 
   # RSpec Rails can automatically mix in different behaviours to your tests
   # based on their file location, for example enabling you to call `get` and
